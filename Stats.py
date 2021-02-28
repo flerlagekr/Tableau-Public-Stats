@@ -87,7 +87,7 @@ def send_new_user_email (email, firstName, url):
         log ("Sent new user welcome email to: " + email)
 
 #------------------------------------------------------------------------------------------------------------------------------
-# Email new user
+# Send message to Ken
 #------------------------------------------------------------------------------------------------------------------------------
 def phone_home (subject, msg):
     sender = "Ken Flerlage <flerlagekr@gmail.com>"
