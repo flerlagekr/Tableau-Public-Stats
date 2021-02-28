@@ -146,7 +146,7 @@ def phone_home (subject, msg):
         log (e.response['Error']['Message'])
 
 #------------------------------------------------------------------------------------------------------------------------------
-# Write a message to the log (or screen)
+# Write a message to the log (or screen). When running in AWS, print will write to Cloudwatch.
 #------------------------------------------------------------------------------------------------------------------------------
 def log (msg):
     timestamp = datetime.datetime.today().strftime("%Y-%m-%d %H:%M:%S")
