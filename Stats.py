@@ -149,8 +149,8 @@ def phone_home (subject, msg):
 # Write a message to the log (or screen). When running in AWS, print will write to Cloudwatch.
 #------------------------------------------------------------------------------------------------------------------------------
 def log (msg):
-    timestamp = datetime.datetime.today().strftime("%Y-%m-%d %H:%M:%S")
-    print(timestamp + ": " + msg)
+    logTimeStamp = datetime.datetime.today().strftime("%Y-%m-%d %H:%M:%S")
+    print(str(logTimeStamp) + ": " + msg)
 
 #------------------------------------------------------------------------------------------------------------------------------
 # Main lambda handler
@@ -186,8 +186,8 @@ def lambda_handler(event, context):
         urlProfile = urlProfile.strip()
         urlProfile = urlProfile[0:len(urlProfile)-3]
         urlProfile = urlProfile + "/"
-        urlProfile = urlProfile.replace('https://public.tableau.com/profile', ' https://public.tableau.com/profile/api')
-        urlProfile = urlProfile + 'workbooks'
+        urlProfile = urlProfile.replace('https://public.tableau.com/profile', 'https://public.tableau.com/profile/api')
+        urlProfileWB = urlProfile + 'workbooks'
 
         log ("Processing profile: " + lastnameList[i] + ", " + firstnameList[i])
 
@@ -238,10 +238,86 @@ def lambda_handler(event, context):
         startDate = datetime.date(year=1970, month=1, day=1)
         timestamp = datetime.datetime.today().strftime("%Y-%m-%d %H:%M:%S")
 
-        # Call the Tableau Public API in chunks and write to the Google Sheet.
+        # Start by calling the API to get user info.
+        response = requests.get(urlProfile)
+
+        try:
+            output = response.json()
+            userName = output["name"]
+
+            org_exists =  "organization" in output
+            if org_exists:
+                userOrg = output["organization"]
+            else:
+                userOrg = ""
+
+            bio_exists =  "bio" in output
+            if bio_exists:
+                bio = output["bio"]
+            else:
+                bio = ""
+            
+            followerCount = output["totalNumberOfFollowers"]
+            totalNumberOfFollowing = output["totalNumberOfFollowing"]
+            lastUserPublishDate = output["lastPublishDate"]
+            profileName = output["profileName"]
+            featuredVizRepoUrl = output["featuredVizRepoUrl"]
+            avatarUrl = output["avatarUrl"]
+            searchable = output["searchable"]
+
+            websites_exists =  "websites" in output
+            if websites_exists:
+                websites = output["websites"]
+            else:
+                websites = ""
+
+            address_exists =  "address" in output
+            if address_exists:
+                address = output["address"]
+            else:
+                address = ""
+
+            # Convert address string to json and get components
+            addressJson = json.loads(address)
+            userCountry = addressJson["country"]
+            userRegion = addressJson["state"]
+            userCity = addressJson["city"]
+
+            # Loop through websites and grab the ones we want
+            facebookURL = ""
+            twitterURL = ""
+            linkedinURL = ""
+            websiteURL = ""
+
+            for w in websites:
+                wTitle = w["title"]
+                wURL = w["url"]
+
+                if wTitle == "facebook.com":
+                    facebookURL = wURL
+                elif wTitle == "twitter.com":
+                    twitterURL = wURL
+                elif wTitle == "linkedin.com":
+                    linkedinURL = wURL
+                else:
+                    websiteURL = wURL
+
+            # Get Twitter, LinkedIn, website from output["websites"]
+
+        except:
+            # Unable to serialize the response to json. Report error and exit loop.
+            msg = "Unable to process the profile, " + urlProfile + " via API. This may be an invalid profile URL. Error: " + str(sys.exc_info()[0])
+            log (msg)
+
+            subject = "Tableau Public Stats Service - Error Processing Profile"
+            phone_home (subject, msg)
+
+            foundValid = 0
+
+        # Call the Tableau Public workbook API in chunks and write to the Google Sheet.
         while (foundValid == 1):
             parameters = {"count": pageCount, "index": index}
-            response = requests.get(urlProfile, params=parameters)
+            response = requests.get(urlProfileWB, params=parameters)
 
             try:
                 output = response.json()
@@ -249,25 +325,57 @@ def lambda_handler(event, context):
                 for o in output:
                     # Collect viz information.
                     title = o['title']
+                    desc = o['description']
+                    defaultViewRepoUrl = o['defaultViewRepoUrl']
+                    defaultViewName = o['defaultViewName']
+                    showInProfile = o['showInProfile']
+                    permalink = o['permalink']
                     viewCount = o['viewCount']
                     numberOfFavorites = o['numberOfFavorites']
                     firstPublishDate = o['firstPublishDate']
-                    defaultViewRepoUrl = o['defaultViewRepoUrl']
-                    showInProfile = o['showInProfile']
-                    viewCount = o['viewCount']
+                    lastPublishDate = o['lastPublishDate']
+                    revision = o['revision']
+                    size = o['size']
 
                     # Calculations and cleanup of values.
                     firstPublishDateFormatted = startDate + datetime.timedelta(milliseconds=firstPublishDate)
+                    lastPublishDateFormatted = startDate + datetime.timedelta(milliseconds=lastPublishDate)
+                    lastUserPublishDateFormatted = startDate + datetime.timedelta(milliseconds=lastUserPublishDate)
+
                     urlViz ="https://public.tableau.com/views/" + defaultViewRepoUrl.replace("/sheets","") + "?:embed=y&:display_count=yes&:showVizHome=no" 
 
                     # Store all values in an array.
-                    matrix[vizCount,0] = title
-                    matrix[vizCount,1] = viewCount
-                    matrix[vizCount,2] = numberOfFavorites
-                    matrix[vizCount,3] = str(firstPublishDateFormatted)
-                    matrix[vizCount,4] = showInProfile
-                    matrix[vizCount,5] = urlViz
-                    matrix[vizCount,6] = timestamp
+                    matrix[vizCount, 0]  = title
+                    matrix[vizCount, 1]  = desc
+                    matrix[vizCount, 2]  = urlViz
+                    matrix[vizCount, 3]  = defaultViewName
+                    matrix[vizCount, 4]  = showInProfile
+                    matrix[vizCount, 5]  = permalink
+                    matrix[vizCount, 6]  = viewCount
+                    matrix[vizCount, 7]  = numberOfFavorites
+                    matrix[vizCount, 8]  = str(firstPublishDateFormatted)
+                    matrix[vizCount, 9]  = str(lastPublishDateFormatted)
+                    matrix[vizCount, 10] = revision
+                    matrix[vizCount, 11] = size
+                    matrix[vizCount, 12] = userName
+                    matrix[vizCount, 13] = profileName
+                    matrix[vizCount, 14] = userOrg
+                    matrix[vizCount, 15] = bio   
+                    matrix[vizCount, 16] = avatarUrl
+                    matrix[vizCount, 17] = searchable
+                    matrix[vizCount, 18] = featuredVizRepoUrl
+                    matrix[vizCount, 19] = str(lastUserPublishDateFormatted)
+                    matrix[vizCount, 20] = followerCount
+                    matrix[vizCount, 21] = totalNumberOfFollowing
+                    matrix[vizCount, 22] = userCountry
+                    matrix[vizCount, 23] = userRegion
+                    matrix[vizCount, 24] = userCity
+                    matrix[vizCount, 25] = websiteURL
+                    matrix[vizCount, 26] = linkedinURL
+                    matrix[vizCount, 27] = twitterURL
+                    matrix[vizCount, 28] = facebookURL
+                    matrix[vizCount, 29] = timestamp
+
                     vizCount += 1
             
                 if not output:
@@ -276,8 +384,7 @@ def lambda_handler(event, context):
                 else:
                     # Keep going.
                     foundValid = 1
-                    index += pageCount
-
+                    
             except:
                 # Unable to serialize the response to json. Report error and exit loop.
                 msg = "Unable to process the profile, " + urlProfile + " via API. This may be an invalid profile URL."
@@ -288,9 +395,12 @@ def lambda_handler(event, context):
 
                 foundValid = 0
 
+            index += pageCount
+
         # Loop through the matrix and write values for a batch update to Google Sheets.
         if vizCount > 0:
-            rangeString = "A2:G" + str(vizCount+1)
+            rangeString = "A2:AD" + str(vizCount+1)
+
             cell_list = sheetStats.range(rangeString)
 
             row = 0
@@ -299,7 +409,7 @@ def lambda_handler(event, context):
             for cell in cell_list: 
                 cell.value = matrix[row,column]
                 column += 1
-                if (column > 6):
+                if (column > 29):
                     column=0
                     row += 1
 
@@ -307,13 +417,62 @@ def lambda_handler(event, context):
             sheetStats.update_cells(cell_list)
 
             # Write the header
-            sheetStats.update_cell(1, 1, "Title")
-            sheetStats.update_cell(1, 2, "Views")
-            sheetStats.update_cell(1, 3, "Favorites")
-            sheetStats.update_cell(1, 4, "First Published")
-            sheetStats.update_cell(1, 5, "Visible")
-            sheetStats.update_cell(1, 6, "URL")
-            sheetStats.update_cell(1, 7, "Stats Last Refrehed")
+            matrix = {}
+            matrix[0, 0] = "Viz - Title"
+            matrix[0, 1] = "Viz - Description"
+            matrix[0, 2] = "Viz - URL"
+            matrix[0, 3] = "Viz - Default View"
+            matrix[0, 4] = "Viz - Visible"
+            matrix[0, 5] = "Viz - Permalink"
+            matrix[0, 6] = "Viz - Views"
+            matrix[0, 7] = "Viz - Favorites"
+            matrix[0, 8] = "Viz - First Published"
+            matrix[0, 9] = "Viz - Last Published"
+            matrix[0, 10] = "Viz - Revision"
+            matrix[0, 11] = "Viz - Size"
+            matrix[0, 12] = "User - Name"
+            matrix[0, 13] = "User - Profile ID"
+            matrix[0, 14] = "User - Organization"
+            matrix[0, 15] = "User - Bio"
+            matrix[0, 16] = "User - Avatar URL"
+            matrix[0, 17] = "User - Searchable"
+            matrix[0, 18] = "User - Featured Viz"
+            matrix[0, 19] = "User - Last Published"
+            matrix[0, 20] = "User - Follower Count"
+            matrix[0, 21] = "User - Following Count"
+            matrix[0, 22] = "User - Country"
+            matrix[0, 23] = "User - State or Region"
+            matrix[0, 24] = "User - City"
+            matrix[0, 25] = "User - Website"
+            matrix[0, 26] = "User - LinkedIn"
+            matrix[0, 27] = "User - Twitter"
+            matrix[0, 28] = "User - Facebook"
+            matrix[0, 29] = "Stats - Stats Last Refrehed"
+
+            rangeString = "A1:AD1"
+
+            cell_list = sheetStats.range(rangeString)
+
+            row = 0
+            column = 0
+
+            for cell in cell_list: 
+                cell.value = matrix[row,column]
+                column += 1
+
+            # Update in batch   
+            sheetStats.update_cells(cell_list)
+
+            # Finishing touches
+            rangeString = "A1:AD" + str(vizCount+1)
+            sheetStats.format(rangeString, {"verticalAlignment": "TOP"})
+
+            rangeString = "A1:AD1"
+            sheetStats.format(rangeString, {'textFormat': {'bold': True}})
+
+            sheetStats.freeze(rows=1)
+
+            sheetStats.update_title ("Stats")
 
             log ("Wrote " + str(vizCount) + " records.")
 
@@ -331,9 +490,12 @@ def lambda_handler(event, context):
     subject = "Tableau Public Stats Service - " + str(newCount) + " New Subscribers"
     phone_home (subject, msg)
 
+
+#------------------------------------------------------------------------------------------------------------------------------
 # Labmda will always call the lambda handler function, so this will not get run unless you are running locally.
 # This code will connect to AWS locally. This requires a credentials file in C:\Users\<Username>\.aws\
 # For further details, see: https://boto3.amazonaws.com/v1/documentation/api/latest/guide/quickstart.html
+#------------------------------------------------------------------------------------------------------------------------------
 if __name__ == "__main__":
     log("Code is running locally..............................................................")
     context = []
