@@ -11,6 +11,9 @@ import boto3
 from oauth2client.service_account import ServiceAccountCredentials
 from botocore.exceptions import ClientError
 
+# Max runtime, in seconds, before exiting the program to avoid exceeding lambda max runtimes (900 seconds)
+maxRuntime = 780 
+
 #------------------------------------------------------------------------------------------------------------------------------
 # Email new user
 #------------------------------------------------------------------------------------------------------------------------------
@@ -153,14 +156,34 @@ def log (msg):
     print(str(logTimeStamp) + ": " + msg)
 
 #------------------------------------------------------------------------------------------------------------------------------
+# Log a message and exit the program.
+#------------------------------------------------------------------------------------------------------------------------------
+def end_function(msg=''):
+    if msg != '':
+        log(msg)
+    
+    exit()
+
+#------------------------------------------------------------------------------------------------------------------------------
 # Main lambda handler
 #------------------------------------------------------------------------------------------------------------------------------
 def lambda_handler(event, context):
+    # Get the start time so we can end the program before exceeding lambda max runtimes (900 seconds)
+    startTime = datetime.datetime.now()
+
+    # Get the Google Sheets credentials from S3
+    s3 = boto3.client('s3')
+    bucket = "flerlage-lambda"
+    key = "creds.json"
+    object = s3.get_object(Bucket=bucket, Key=key)
+    content = object['Body']
+    creds = json.loads(content.read())
+
     # Open Google Sheet
     scope =['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
-
-    # Read Google API key from a local json file.
-    credentials = ServiceAccountCredentials.from_json_keyfile_name('C:/Users/Ken/Documents/Ken/Blog/My Vizzes/Python/creds.json', scope)
+    
+    # Read your Google API key from a local json file.
+    credentials = ServiceAccountCredentials.from_json_keyfile_dict(creds, scope)
     gc = gspread.authorize(credentials) 
 
     # Read the sign-up sheet
@@ -172,6 +195,7 @@ def lambda_handler(event, context):
     lastnameList = sheetProfiles.col_values(4)
     profileList = sheetProfiles.col_values(5)
     urlList = sheetProfiles.col_values(6)
+    dateList = sheetProfiles.col_values(7)
 
     profileCount = len(emailList)
 
@@ -181,213 +205,157 @@ def lambda_handler(event, context):
 
     # Loop through all the profiles.
     for i in range(1, profileCount):
-        # Get profile URL and and change it to use the API url.
-        urlProfile = profileList[i]
-        urlProfile = urlProfile.strip()
-        urlProfile = urlProfile[0:len(urlProfile)-3]
-        urlProfile = urlProfile + "/"
-        urlProfile = urlProfile.replace('https://public.tableau.com/profile', 'https://public.tableau.com/profile/api')
-        urlProfileWB = urlProfile + 'workbooks'
+        # Check time so we can end the program before exceeding lambda max runtimes (900 seconds)
+        checkTime = datetime.datetime.now()
+        dateDiff = checkTime - startTime
+        secondsRunning = dateDiff.seconds
 
-        log ("Processing profile: " + lastnameList[i] + ", " + firstnameList[i])
+        if secondsRunning >= maxRuntime:
+            end_function("Program exceeded max runtime and was forced to end.")
 
-        if len(urlList) <= i:
-            # No value.
-            processed = False
+        # Get the last refresh date.
+        if len(dateList) <= i:
+            # No value. Set way back.
+            refreshDateStr = "2000-01-01 00:00:00"
         elif urlList[i] == "":
-            # Blank means this hasn't been processed. 
-            processed = False
+            # Blank. Set way back.
+            refreshDateStr = "2000-01-01 00:00:00"
         else:
-            # This has already been processed.
-            processed = True
+            # Use the value.
+            refreshDateStr = dateList[i]
 
-        if processed == True:
-            # Just get the URL that's there and try to open it
-            urlStats = urlList[i]
+        refreshDate = datetime.datetime.strptime(refreshDateStr, "%Y-%m-%d %H:%M:%S")
+        dateDiff = datetime.datetime.now() - refreshDate
+        daysSinceRefresh = dateDiff.days
 
-            try:
-                docStats = gc.open_by_url(urlStats)
-                sheetStats = docStats.get_worksheet(0)
-            except:
-                msg = "Could not open the spreadsheet: " + urlStats + ". This will be treated as a new profile."
-                log (msg)
+        if daysSinceRefresh > 0:
+            # Get profile URL and and change it to use the API url.
+            urlProfile = profileList[i]
+            urlProfileOriginal = urlProfile
+            urlProfile = urlProfile.strip()
+            urlProfile = urlProfile[0:len(urlProfile)-3]
+            urlProfile = urlProfile + "/"
+            urlProfile = urlProfile.replace('https://public.tableau.com/profile', 'https://public.tableau.com/profile/api')
+            urlProfileWB = urlProfile + 'workbooks'
 
-                subject = "Tableau Public Stats Service - Error Opening Spreadsheet"
-                phone_home (subject, msg)
+            log ("Processing profile: " + lastnameList[i] + ", " + firstnameList[i])
 
+            if len(urlList) <= i:
+                # No value.
                 processed = False
-        
-        if processed == False:
-            # Create a new spreadsheet, and assign permissions.
-            docStats = gc.create('Stats: ' + lastnameList[i] + ', ' + firstnameList[i])
-            docStats.share('flerlagekr@gmail.com', perm_type='user', role='writer')
-            docStats.share(emailList[i], perm_type='user', role='reader')
-            urlStats = 'https://docs.google.com/spreadsheets/d/' + docStats.id
-            log ("Created new sheet: " + urlStats)
-
-            sheetProfiles.update_cell(i+1, 6, urlStats)
-
-            sheetStats = docStats.get_worksheet(0)
-
-        # Initialize Variables
-        pageCount = 50
-        index = 0
-        vizCount = 0
-        matrix = {}
-        foundValid = 1
-        startDate = datetime.date(year=1970, month=1, day=1)
-        timestamp = datetime.datetime.today().strftime("%Y-%m-%d %H:%M:%S")
-
-        # Start by calling the API to get user info.
-        response = requests.get(urlProfile)
-
-        try:
-            output = response.json()
-            userName = output["name"]
-
-            org_exists =  "organization" in output
-            if org_exists:
-                userOrg = output["organization"]
+            elif urlList[i] == "":
+                # Blank means this hasn't been processed. 
+                processed = False
             else:
-                userOrg = ""
+                # This has already been processed.
+                processed = True
 
-            bio_exists =  "bio" in output
-            if bio_exists:
-                bio = output["bio"]
-            else:
-                bio = ""
+            if processed == True:
+                # Just get the URL that's there and try to open it
+                urlStats = urlList[i]
+
+                try:
+                    docStats = gc.open_by_url(urlStats)
+                    sheetStats = docStats.get_worksheet(0)
+                except:
+                    msg = "Could not open the spreadsheet: " + urlStats + ". This will be treated as a new profile."
+                    log (msg)
+
+                    subject = "Tableau Public Stats Service - Error Opening Spreadsheet"
+                    phone_home (subject, msg)
+
+                    processed = False
             
-            followerCount = output["totalNumberOfFollowers"]
-            totalNumberOfFollowing = output["totalNumberOfFollowing"]
-            lastUserPublishDate = output["lastPublishDate"]
-            profileName = output["profileName"]
-            featuredVizRepoUrl = output["featuredVizRepoUrl"]
-            avatarUrl = output["avatarUrl"]
-            searchable = output["searchable"]
+            if processed == False:
+                # Create a new spreadsheet, and assign permissions.
+                docStats = gc.create('Stats: ' + lastnameList[i] + ', ' + firstnameList[i])
+                docStats.share('flerlagekr@gmail.com', perm_type='user', role='writer')
+                docStats.share(emailList[i], perm_type='user', role='reader')
+                urlStats = 'https://docs.google.com/spreadsheets/d/' + docStats.id
+                log ("Created new sheet: " + urlStats)
 
-            websites_exists =  "websites" in output
-            if websites_exists:
-                websites = output["websites"]
-            else:
-                websites = ""
+                sheetProfiles.update_cell(i+1, 6, urlStats)
 
-            address_exists =  "address" in output
-            if address_exists:
-                address = output["address"]
-            else:
-                address = ""
+                sheetStats = docStats.get_worksheet(0)
 
-            # Convert address string to json and get components
-            addressJson = json.loads(address)
-            userCountry = addressJson["country"]
-            userRegion = addressJson["state"]
-            userCity = addressJson["city"]
+            # Initialize Variables
+            pageCount = 50
+            index = 0
+            vizCount = 0
+            matrix = {}
+            foundValid = 1
+            startDate = datetime.date(year=1970, month=1, day=1)
+            timestamp = datetime.datetime.today().strftime("%Y-%m-%d %H:%M:%S")
 
-            # Loop through websites and grab the ones we want
-            facebookURL = ""
-            twitterURL = ""
-            linkedinURL = ""
-            websiteURL = ""
-
-            for w in websites:
-                wTitle = w["title"]
-                wURL = w["url"]
-
-                if wTitle == "facebook.com":
-                    facebookURL = wURL
-                elif wTitle == "twitter.com":
-                    twitterURL = wURL
-                elif wTitle == "linkedin.com":
-                    linkedinURL = wURL
-                else:
-                    websiteURL = wURL
-
-            # Get Twitter, LinkedIn, website from output["websites"]
-
-        except:
-            # Unable to serialize the response to json. Report error and exit loop.
-            msg = "Unable to process the profile, " + urlProfile + " via API. This may be an invalid profile URL. Error: " + str(sys.exc_info()[0])
-            log (msg)
-
-            subject = "Tableau Public Stats Service - Error Processing Profile"
-            phone_home (subject, msg)
-
-            foundValid = 0
-
-        # Call the Tableau Public workbook API in chunks and write to the Google Sheet.
-        while (foundValid == 1):
-            parameters = {"count": pageCount, "index": index}
-            response = requests.get(urlProfileWB, params=parameters)
+            # Start by calling the API to get user info.
+            response = requests.get(urlProfile)
 
             try:
                 output = response.json()
+                userName = output["name"]
 
-                for o in output:
-                    # Collect viz information.
-                    title = o['title']
-                    desc = o['description']
-                    defaultViewRepoUrl = o['defaultViewRepoUrl']
-                    defaultViewName = o['defaultViewName']
-                    showInProfile = o['showInProfile']
-                    permalink = o['permalink']
-                    viewCount = o['viewCount']
-                    numberOfFavorites = o['numberOfFavorites']
-                    firstPublishDate = o['firstPublishDate']
-                    lastPublishDate = o['lastPublishDate']
-                    revision = o['revision']
-                    size = o['size']
-
-                    # Calculations and cleanup of values.
-                    firstPublishDateFormatted = startDate + datetime.timedelta(milliseconds=firstPublishDate)
-                    lastPublishDateFormatted = startDate + datetime.timedelta(milliseconds=lastPublishDate)
-                    lastUserPublishDateFormatted = startDate + datetime.timedelta(milliseconds=lastUserPublishDate)
-
-                    urlViz ="https://public.tableau.com/views/" + defaultViewRepoUrl.replace("/sheets","") + "?:embed=y&:display_count=yes&:showVizHome=no" 
-
-                    # Store all values in an array.
-                    matrix[vizCount, 0]  = title
-                    matrix[vizCount, 1]  = desc
-                    matrix[vizCount, 2]  = urlViz
-                    matrix[vizCount, 3]  = defaultViewName
-                    matrix[vizCount, 4]  = showInProfile
-                    matrix[vizCount, 5]  = permalink
-                    matrix[vizCount, 6]  = viewCount
-                    matrix[vizCount, 7]  = numberOfFavorites
-                    matrix[vizCount, 8]  = str(firstPublishDateFormatted)
-                    matrix[vizCount, 9]  = str(lastPublishDateFormatted)
-                    matrix[vizCount, 10] = revision
-                    matrix[vizCount, 11] = size
-                    matrix[vizCount, 12] = userName
-                    matrix[vizCount, 13] = profileName
-                    matrix[vizCount, 14] = userOrg
-                    matrix[vizCount, 15] = bio   
-                    matrix[vizCount, 16] = avatarUrl
-                    matrix[vizCount, 17] = searchable
-                    matrix[vizCount, 18] = featuredVizRepoUrl
-                    matrix[vizCount, 19] = str(lastUserPublishDateFormatted)
-                    matrix[vizCount, 20] = followerCount
-                    matrix[vizCount, 21] = totalNumberOfFollowing
-                    matrix[vizCount, 22] = userCountry
-                    matrix[vizCount, 23] = userRegion
-                    matrix[vizCount, 24] = userCity
-                    matrix[vizCount, 25] = websiteURL
-                    matrix[vizCount, 26] = linkedinURL
-                    matrix[vizCount, 27] = twitterURL
-                    matrix[vizCount, 28] = facebookURL
-                    matrix[vizCount, 29] = timestamp
-
-                    vizCount += 1
-            
-                if not output:
-                    # We're out of valid vizzes, so quit.
-                    foundValid = 0
+                org_exists =  "organization" in output
+                if org_exists:
+                    userOrg = output["organization"]
                 else:
-                    # Keep going.
-                    foundValid = 1
-                    
+                    userOrg = ""
+
+                bio_exists =  "bio" in output
+                if bio_exists:
+                    bio = output["bio"]
+                else:
+                    bio = ""
+                
+                followerCount = output["totalNumberOfFollowers"]
+                totalNumberOfFollowing = output["totalNumberOfFollowing"]
+                lastUserPublishDate = output["lastPublishDate"]
+                profileName = output["profileName"]
+                featuredVizRepoUrl = output["featuredVizRepoUrl"]
+                avatarUrl = output["avatarUrl"]
+                searchable = output["searchable"]
+
+                websites_exists =  "websites" in output
+                if websites_exists:
+                    websites = output["websites"]
+                else:
+                    websites = ""
+
+                address_exists =  "address" in output
+                if address_exists:
+                    address = output["address"]
+                else:
+                    address = ""
+
+                # Convert address string to json and get components
+                addressJson = json.loads(address)
+                userCountry = addressJson["country"]
+                userRegion = addressJson["state"]
+                userCity = addressJson["city"]
+
+                # Loop through websites and grab the ones we want
+                facebookURL = ""
+                twitterURL = ""
+                linkedinURL = ""
+                websiteURL = ""
+
+                for w in websites:
+                    wTitle = w["title"]
+                    wURL = w["url"]
+
+                    if wTitle == "facebook.com":
+                        facebookURL = wURL
+                    elif wTitle == "twitter.com":
+                        twitterURL = wURL
+                    elif wTitle == "linkedin.com":
+                        linkedinURL = wURL
+                    else:
+                        websiteURL = wURL
+
+                # Get Twitter, LinkedIn, website from output["websites"]
+
             except:
                 # Unable to serialize the response to json. Report error and exit loop.
-                msg = "Unable to process the profile, " + urlProfile + " via API. This may be an invalid profile URL."
+                msg = "Unable to process the profile, " + urlProfile + " via API. This may be an invalid profile URL. Error: " + str(sys.exc_info()[0])
                 log (msg)
 
                 subject = "Tableau Public Stats Service - Error Processing Profile"
@@ -395,95 +363,182 @@ def lambda_handler(event, context):
 
                 foundValid = 0
 
-            index += pageCount
+            # Call the Tableau Public workbook API in chunks and write to the Google Sheet.
+            while (foundValid == 1):
+                parameters = {"count": pageCount, "index": index}
+                response = requests.get(urlProfileWB, params=parameters)
 
-        # Loop through the matrix and write values for a batch update to Google Sheets.
-        if vizCount > 0:
-            rangeString = "A2:AD" + str(vizCount+1)
+                try:
+                    output = response.json()
 
-            cell_list = sheetStats.range(rangeString)
+                    for o in output:
+                        # Collect viz information.
+                        title = o['title']
+                        desc = o['description']
+                        defaultViewRepoUrl = o['defaultViewRepoUrl']
+                        defaultViewName = o['defaultViewName']
+                        showInProfile = o['showInProfile']
+                        permalink = o['permalink']
+                        viewCount = o['viewCount']
+                        numberOfFavorites = o['numberOfFavorites']
+                        firstPublishDate = o['firstPublishDate']
+                        lastPublishDate = o['lastPublishDate']
+                        revision = o['revision']
+                        size = o['size']
 
-            row = 0
-            column = 0
+                        # Calculations and cleanup of values.
+                        firstPublishDateFormatted = startDate + datetime.timedelta(milliseconds=firstPublishDate)
+                        lastPublishDateFormatted = startDate + datetime.timedelta(milliseconds=lastPublishDate)
+                        lastUserPublishDateFormatted = startDate + datetime.timedelta(milliseconds=lastUserPublishDate)
 
-            for cell in cell_list: 
-                cell.value = matrix[row,column]
-                column += 1
-                if (column > 29):
-                    column=0
-                    row += 1
+                        urlViz ="https://public.tableau.com/views/" + defaultViewRepoUrl.replace("/sheets","") + "?:embed=y&:display_count=yes&:showVizHome=no" 
 
-            # Update in batch   
-            sheetStats.update_cells(cell_list)
+                        # Store all values in an array.
+                        matrix[vizCount, 0]  = title
+                        matrix[vizCount, 1]  = desc
+                        matrix[vizCount, 2]  = urlViz
+                        matrix[vizCount, 3]  = defaultViewName
+                        matrix[vizCount, 4]  = showInProfile
+                        matrix[vizCount, 5]  = permalink
+                        matrix[vizCount, 6]  = viewCount
+                        matrix[vizCount, 7]  = numberOfFavorites
+                        matrix[vizCount, 8]  = str(firstPublishDateFormatted)
+                        matrix[vizCount, 9]  = str(lastPublishDateFormatted)
+                        matrix[vizCount, 10] = revision
+                        matrix[vizCount, 11] = size
+                        matrix[vizCount, 12] = userName
+                        matrix[vizCount, 13] = profileName
+                        matrix[vizCount, 14] = userOrg
+                        matrix[vizCount, 15] = bio   
+                        matrix[vizCount, 16] = avatarUrl
+                        matrix[vizCount, 17] = searchable
+                        matrix[vizCount, 18] = featuredVizRepoUrl
+                        matrix[vizCount, 19] = str(lastUserPublishDateFormatted)
+                        matrix[vizCount, 20] = followerCount
+                        matrix[vizCount, 21] = totalNumberOfFollowing
+                        matrix[vizCount, 22] = userCountry
+                        matrix[vizCount, 23] = userRegion
+                        matrix[vizCount, 24] = userCity
+                        matrix[vizCount, 25] = websiteURL
+                        matrix[vizCount, 26] = linkedinURL
+                        matrix[vizCount, 27] = twitterURL
+                        matrix[vizCount, 28] = facebookURL
+                        matrix[vizCount, 29] = urlProfileOriginal
+                        matrix[vizCount, 30] = timestamp
 
-            # Write the header
-            matrix = {}
-            matrix[0, 0] = "Viz - Title"
-            matrix[0, 1] = "Viz - Description"
-            matrix[0, 2] = "Viz - URL"
-            matrix[0, 3] = "Viz - Default View"
-            matrix[0, 4] = "Viz - Visible"
-            matrix[0, 5] = "Viz - Permalink"
-            matrix[0, 6] = "Viz - Views"
-            matrix[0, 7] = "Viz - Favorites"
-            matrix[0, 8] = "Viz - First Published"
-            matrix[0, 9] = "Viz - Last Published"
-            matrix[0, 10] = "Viz - Revision"
-            matrix[0, 11] = "Viz - Size"
-            matrix[0, 12] = "User - Name"
-            matrix[0, 13] = "User - Profile ID"
-            matrix[0, 14] = "User - Organization"
-            matrix[0, 15] = "User - Bio"
-            matrix[0, 16] = "User - Avatar URL"
-            matrix[0, 17] = "User - Searchable"
-            matrix[0, 18] = "User - Featured Viz"
-            matrix[0, 19] = "User - Last Published"
-            matrix[0, 20] = "User - Follower Count"
-            matrix[0, 21] = "User - Following Count"
-            matrix[0, 22] = "User - Country"
-            matrix[0, 23] = "User - State or Region"
-            matrix[0, 24] = "User - City"
-            matrix[0, 25] = "User - Website"
-            matrix[0, 26] = "User - LinkedIn"
-            matrix[0, 27] = "User - Twitter"
-            matrix[0, 28] = "User - Facebook"
-            matrix[0, 29] = "Stats - Stats Last Refrehed"
+                        vizCount += 1
+                
+                    if not output:
+                        # We're out of valid vizzes, so quit.
+                        foundValid = 0
+                    else:
+                        # Keep going.
+                        foundValid = 1
+                        
+                except:
+                    # Unable to serialize the response to json. Report error and exit loop.
+                    msg = "Unable to process the profile, " + urlProfile + " via API. This may be an invalid profile URL."
+                    log (msg)
 
-            rangeString = "A1:AD1"
+                    subject = "Tableau Public Stats Service - Error Processing Profile"
+                    phone_home (subject, msg)
 
-            cell_list = sheetStats.range(rangeString)
+                    foundValid = 0
 
-            row = 0
-            column = 0
+                index += pageCount
 
-            for cell in cell_list: 
-                cell.value = matrix[row,column]
-                column += 1
+            # Loop through the matrix and write values for a batch update to Google Sheets.
+            if vizCount > 0:
+                rangeString = "A2:AE" + str(vizCount+1)
 
-            # Update in batch   
-            sheetStats.update_cells(cell_list)
+                cell_list = sheetStats.range(rangeString)
 
-            # Finishing touches
-            rangeString = "A1:AD" + str(vizCount+1)
-            sheetStats.format(rangeString, {"verticalAlignment": "TOP"})
+                row = 0
+                column = 0
 
-            rangeString = "A1:AD1"
-            sheetStats.format(rangeString, {'textFormat': {'bold': True}})
+                for cell in cell_list: 
+                    cell.value = matrix[row,column]
+                    column += 1
+                    if (column > 30):
+                        column=0
+                        row += 1
 
-            sheetStats.freeze(rows=1)
+                # Update in batch   
+                sheetStats.update_cells(cell_list)
 
-            sheetStats.update_title ("Stats")
+                # Write the header
+                matrix = {}
+                matrix[0, 0] =  "Viz - Title"
+                matrix[0, 1] =  "Viz - Description"
+                matrix[0, 2] =  "Viz - URL"
+                matrix[0, 3] =  "Viz - Default View"
+                matrix[0, 4] =  "Viz - Visible"
+                matrix[0, 5] =  "Viz - Permalink"
+                matrix[0, 6] =  "Viz - Views"
+                matrix[0, 7] =  "Viz - Favorites"
+                matrix[0, 8] =  "Viz - First Published"
+                matrix[0, 9] =  "Viz - Last Published"
+                matrix[0, 10] = "Viz - Revision"
+                matrix[0, 11] = "Viz - Size"
+                matrix[0, 12] = "User - Name"
+                matrix[0, 13] = "User - Profile ID"
+                matrix[0, 14] = "User - Organization"
+                matrix[0, 15] = "User - Bio"
+                matrix[0, 16] = "User - Avatar URL"
+                matrix[0, 17] = "User - Searchable"
+                matrix[0, 18] = "User - Featured Viz"
+                matrix[0, 19] = "User - Last Published"
+                matrix[0, 20] = "User - Follower Count"
+                matrix[0, 21] = "User - Following Count"
+                matrix[0, 22] = "User - Country"
+                matrix[0, 23] = "User - State or Region"
+                matrix[0, 24] = "User - City"
+                matrix[0, 25] = "User - Website"
+                matrix[0, 26] = "User - LinkedIn"
+                matrix[0, 27] = "User - Twitter"
+                matrix[0, 28] = "User - Facebook"
+                matrix[0, 29] = "User - Tableau Public"
+                matrix[0, 30] = "Stats - Stats Last Refrehed"
 
-            log ("Wrote " + str(vizCount) + " records.")
+                rangeString = "A1:AE1"
 
-            # If a new user, send the welcome email.
-            if processed == False:
-                send_new_user_email(emailList[i], firstnameList[i], urlStats)
-                newCount += 1
+                cell_list = sheetStats.range(rangeString)
 
-        else:
-            log ("No records written.")
+                row = 0
+                column = 0
 
+                for cell in cell_list: 
+                    cell.value = matrix[row,column]
+                    column += 1
+
+                # Update in batch   
+                sheetStats.update_cells(cell_list)
+
+                # Finishing touches
+                rangeString = "A1:AE" + str(vizCount+1)
+                sheetStats.format(rangeString, {"verticalAlignment": "TOP"})
+
+                rangeString = "A1:AE1"
+                sheetStats.format(rangeString, {'textFormat': {'bold': True}})
+
+                sheetStats.freeze(rows=1)
+
+                sheetStats.update_title ("Stats")
+
+                log ("Wrote " + str(vizCount) + " records.")
+
+                # If a new user, send the welcome email.
+                if processed == False:
+                    send_new_user_email(emailList[i], firstnameList[i], urlStats)
+                    newCount += 1
+
+            else:
+                log ("No records written.")
+
+
+            # Populate the last refreshed date.
+            refreshDate = datetime.datetime.today().strftime("%Y-%m-%d %H:%M:%S")
+            sheetProfiles.update_cell(i+1, 7, refreshDate)
 
     # Send email to Ken, indicating the number of new subscribers.
     msg = str(newCount) + " new subscribers have been added."
