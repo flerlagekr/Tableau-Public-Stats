@@ -1,6 +1,10 @@
 #  This code will loop through Tableau Public profiles and write each one's stats to its own Google Sheet.
 #  Written by Ken Flerlage, February, 2021.
 
+# Add fields for viz thumbnail and featured viz thumbnail.
+# https://public.tableau.com/views/NightLightsWorld/NightLights?:embed=y&:display_count=yes&:showVizHome=no
+# https://public.tableau.com/static/images/Ni/NightLightsWorld/NightLights/4_3.png
+
 import sys
 import json
 import requests
@@ -213,6 +217,8 @@ def lambda_handler(event, context):
         if secondsRunning >= maxRuntime:
             end_function("Program exceeded max runtime and was forced to end.")
 
+        refreshDateStr = ''
+
         # Get the last refresh date.
         if len(dateList) <= i:
             # No value. Set way back.
@@ -223,6 +229,10 @@ def lambda_handler(event, context):
         else:
             # Use the value.
             refreshDateStr = dateList[i]
+
+        # If still blank, set back.
+        if refreshDateStr == '':
+            refreshDateStr = "2000-01-01 00:00:00"
 
         refreshDate = datetime.datetime.strptime(refreshDateStr, "%Y-%m-%d %H:%M:%S")
         dateDiff = datetime.datetime.now() - refreshDate
@@ -279,7 +289,7 @@ def lambda_handler(event, context):
                 sheetStats = docStats.get_worksheet(0)
 
             # Initialize Variables
-            pageCount = 50
+            pageCount = 250
             index = 0
             vizCount = 0
             matrix = {}
@@ -351,11 +361,9 @@ def lambda_handler(event, context):
                     else:
                         websiteURL = wURL
 
-                # Get Twitter, LinkedIn, website from output["websites"]
-
             except:
                 # Unable to serialize the response to json. Report error and exit loop.
-                msg = "Unable to process the profile, " + urlProfile + " via API. This may be an invalid profile URL. Error: " + str(sys.exc_info()[0])
+                msg = "Unable to process the profile, " + urlProfile + " via API. Error: " + str(sys.exc_info()[0])
                 log (msg)
 
                 subject = "Tableau Public Stats Service - Error Processing Profile"
@@ -375,6 +383,7 @@ def lambda_handler(event, context):
                         # Collect viz information.
                         title = o['title']
                         desc = o['description']
+                        workbookID = o['workbookRepoUrl']
                         defaultViewRepoUrl = o['defaultViewRepoUrl']
                         defaultViewName = o['defaultViewName']
                         showInProfile = o['showInProfile']
@@ -391,40 +400,48 @@ def lambda_handler(event, context):
                         lastPublishDateFormatted = startDate + datetime.timedelta(milliseconds=lastPublishDate)
                         lastUserPublishDateFormatted = startDate + datetime.timedelta(milliseconds=lastUserPublishDate)
 
-                        urlViz ="https://public.tableau.com/views/" + defaultViewRepoUrl.replace("/sheets","") + "?:embed=y&:display_count=yes&:showVizHome=no" 
+                        # Formulate the various URLs.
+                        urlViz ="https://public.tableau.com/views/" + defaultViewRepoUrl.replace("/sheets","") 
+                        urlVizNoVizHome = urlViz + "?:embed=y&:display_count=yes&:showVizHome=no" 
+                        urlThumbnail = urlViz.replace("/views/", "/static/images/" + defaultViewRepoUrl[0:2] + "/") + "/4_3.png"
+
+                        urlViz = urlProfileOriginal + "vizhome/" + defaultViewRepoUrl.replace("/sheets","") 
 
                         # Store all values in an array.
-                        matrix[vizCount, 0]  = title
-                        matrix[vizCount, 1]  = desc
-                        matrix[vizCount, 2]  = urlViz
-                        matrix[vizCount, 3]  = defaultViewName
-                        matrix[vizCount, 4]  = showInProfile
-                        matrix[vizCount, 5]  = permalink
-                        matrix[vizCount, 6]  = viewCount
-                        matrix[vizCount, 7]  = numberOfFavorites
-                        matrix[vizCount, 8]  = str(firstPublishDateFormatted)
-                        matrix[vizCount, 9]  = str(lastPublishDateFormatted)
-                        matrix[vizCount, 10] = revision
-                        matrix[vizCount, 11] = size
-                        matrix[vizCount, 12] = userName
-                        matrix[vizCount, 13] = profileName
-                        matrix[vizCount, 14] = userOrg
-                        matrix[vizCount, 15] = bio   
-                        matrix[vizCount, 16] = avatarUrl
-                        matrix[vizCount, 17] = searchable
-                        matrix[vizCount, 18] = featuredVizRepoUrl
-                        matrix[vizCount, 19] = str(lastUserPublishDateFormatted)
-                        matrix[vizCount, 20] = followerCount
-                        matrix[vizCount, 21] = totalNumberOfFollowing
-                        matrix[vizCount, 22] = userCountry
-                        matrix[vizCount, 23] = userRegion
-                        matrix[vizCount, 24] = userCity
-                        matrix[vizCount, 25] = websiteURL
-                        matrix[vizCount, 26] = linkedinURL
-                        matrix[vizCount, 27] = twitterURL
-                        matrix[vizCount, 28] = facebookURL
-                        matrix[vizCount, 29] = urlProfileOriginal
-                        matrix[vizCount, 30] = timestamp
+                        matrix[vizCount, 0]  = workbookID
+                        matrix[vizCount, 1]  = title
+                        matrix[vizCount, 2]  = desc
+                        matrix[vizCount, 3]  = urlViz
+                        matrix[vizCount, 4]  = urlVizNoVizHome
+                        matrix[vizCount, 5]  = urlThumbnail
+                        matrix[vizCount, 6]  = defaultViewName
+                        matrix[vizCount, 7]  = showInProfile
+                        matrix[vizCount, 8]  = permalink
+                        matrix[vizCount, 9]  = viewCount
+                        matrix[vizCount, 10] = numberOfFavorites
+                        matrix[vizCount, 11] = str(firstPublishDateFormatted)
+                        matrix[vizCount, 12] = str(lastPublishDateFormatted)
+                        matrix[vizCount, 13] = revision
+                        matrix[vizCount, 14] = size
+                        matrix[vizCount, 15] = userName
+                        matrix[vizCount, 16] = profileName
+                        matrix[vizCount, 17] = userOrg
+                        matrix[vizCount, 18] = bio   
+                        matrix[vizCount, 19] = avatarUrl
+                        matrix[vizCount, 20] = searchable
+                        matrix[vizCount, 21] = featuredVizRepoUrl
+                        matrix[vizCount, 22] = str(lastUserPublishDateFormatted)
+                        matrix[vizCount, 23] = followerCount
+                        matrix[vizCount, 24] = totalNumberOfFollowing
+                        matrix[vizCount, 25] = userCountry
+                        matrix[vizCount, 26] = userRegion
+                        matrix[vizCount, 27] = userCity
+                        matrix[vizCount, 28] = websiteURL
+                        matrix[vizCount, 29] = linkedinURL
+                        matrix[vizCount, 30] = twitterURL
+                        matrix[vizCount, 31] = facebookURL
+                        matrix[vizCount, 32] = urlProfileOriginal
+                        matrix[vizCount, 33] = timestamp
 
                         vizCount += 1
                 
@@ -437,7 +454,7 @@ def lambda_handler(event, context):
                         
                 except:
                     # Unable to serialize the response to json. Report error and exit loop.
-                    msg = "Unable to process the profile, " + urlProfile + " via API. This may be an invalid profile URL."
+                    msg = "Unable to process the profile, " + urlProfile + " via API. Error: " + str(sys.exc_info()[0])
                     log (msg)
 
                     subject = "Tableau Public Stats Service - Error Processing Profile"
@@ -449,7 +466,7 @@ def lambda_handler(event, context):
 
             # Loop through the matrix and write values for a batch update to Google Sheets.
             if vizCount > 0:
-                rangeString = "A2:AE" + str(vizCount+1)
+                rangeString = "A2:AH" + str(vizCount+1)
 
                 cell_list = sheetStats.range(rangeString)
 
@@ -459,7 +476,7 @@ def lambda_handler(event, context):
                 for cell in cell_list: 
                     cell.value = matrix[row,column]
                     column += 1
-                    if (column > 30):
+                    if (column > 33):
                         column=0
                         row += 1
 
@@ -468,39 +485,44 @@ def lambda_handler(event, context):
 
                 # Write the header
                 matrix = {}
-                matrix[0, 0] =  "Viz - Title"
-                matrix[0, 1] =  "Viz - Description"
-                matrix[0, 2] =  "Viz - URL"
-                matrix[0, 3] =  "Viz - Default View"
-                matrix[0, 4] =  "Viz - Visible"
-                matrix[0, 5] =  "Viz - Permalink"
-                matrix[0, 6] =  "Viz - Views"
-                matrix[0, 7] =  "Viz - Favorites"
-                matrix[0, 8] =  "Viz - First Published"
-                matrix[0, 9] =  "Viz - Last Published"
-                matrix[0, 10] = "Viz - Revision"
-                matrix[0, 11] = "Viz - Size"
-                matrix[0, 12] = "User - Name"
-                matrix[0, 13] = "User - Profile ID"
-                matrix[0, 14] = "User - Organization"
-                matrix[0, 15] = "User - Bio"
-                matrix[0, 16] = "User - Avatar URL"
-                matrix[0, 17] = "User - Searchable"
-                matrix[0, 18] = "User - Featured Viz"
-                matrix[0, 19] = "User - Last Published"
-                matrix[0, 20] = "User - Follower Count"
-                matrix[0, 21] = "User - Following Count"
-                matrix[0, 22] = "User - Country"
-                matrix[0, 23] = "User - State or Region"
-                matrix[0, 24] = "User - City"
-                matrix[0, 25] = "User - Website"
-                matrix[0, 26] = "User - LinkedIn"
-                matrix[0, 27] = "User - Twitter"
-                matrix[0, 28] = "User - Facebook"
-                matrix[0, 29] = "User - Tableau Public"
-                matrix[0, 30] = "Stats - Stats Last Refrehed"
+                matrix[0, 0] =  "Viz - ID"
+                matrix[0, 1] =  "Viz - Title"
+                matrix[0, 2] =  "Viz - Description"
+                matrix[0, 3] =  "Viz - URL"
+                matrix[0, 4] =  "Viz - URL (No Home)"
+                matrix[0, 5] =  "Viz - Thumbnail URL"
+                matrix[0, 6] =  "Viz - Default View"
+                matrix[0, 7] =  "Viz - Visible"
+                matrix[0, 8] =  "Viz - Permalink"
+                matrix[0, 9] =  "Viz - Views"
+                matrix[0, 10] = "Viz - Favorites"
+                matrix[0, 11] = "Viz - First Published"
+                matrix[0, 12] = "Viz - Last Published"
+                matrix[0, 13] = "Viz - Revision"
+                matrix[0, 14] = "Viz - Size"
+                matrix[0, 15] = "User - Name"
+                matrix[0, 16] = "User - Profile ID"
+                matrix[0, 17] = "User - Organization"
+                matrix[0, 18] = "User - Bio"
+                matrix[0, 19] = "User - Avatar URL"
+                matrix[0, 20] = "User - Searchable"
+                matrix[0, 21] = "User - Featured Viz"
+                matrix[0, 22] = "User - Last Published"
+                matrix[0, 23] = "User - Follower Count"
+                matrix[0, 24] = "User - Following Count"
+                matrix[0, 25] = "User - Country"
+                matrix[0, 26] = "User - State or Region"
+                matrix[0, 27] = "User - City"
+                matrix[0, 28] = "User - Website"
+                matrix[0, 29] = "User - LinkedIn"
+                matrix[0, 30] = "User - Twitter"
+                matrix[0, 31] = "User - Facebook"
+                matrix[0, 32] = "User - Tableau Public"
+                matrix[0, 33] = "Stats - Stats Last Refreshed"
 
-                rangeString = "A1:AE1"
+                #workbookID, urlVizNoVizHome, urlThumbnail
+
+                rangeString = "A1:AH1"
 
                 cell_list = sheetStats.range(rangeString)
 
@@ -515,10 +537,10 @@ def lambda_handler(event, context):
                 sheetStats.update_cells(cell_list)
 
                 # Finishing touches
-                rangeString = "A1:AE" + str(vizCount+1)
+                rangeString = "A1:AH" + str(vizCount+1)
                 sheetStats.format(rangeString, {"verticalAlignment": "TOP"})
 
-                rangeString = "A1:AE1"
+                rangeString = "A1:AH1"
                 sheetStats.format(rangeString, {'textFormat': {'bold': True}})
 
                 sheetStats.freeze(rows=1)
