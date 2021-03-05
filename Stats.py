@@ -321,8 +321,13 @@ def lambda_handler(event, context):
                 lastUserPublishDate = output["lastPublishDate"]
                 profileName = output["profileName"]
                 featuredVizRepoUrl = output["featuredVizRepoUrl"]
-                avatarUrl = output["avatarUrl"]
                 searchable = output["searchable"]
+
+                avatar_exists =  "avatarUrl" in output
+                if avatar_exists:
+                    avatarUrl = output["avatarUrl"]
+                else:
+                    avatarUrl = ""
 
                 websites_exists =  "websites" in output
                 if websites_exists:
@@ -333,14 +338,34 @@ def lambda_handler(event, context):
                 address_exists =  "address" in output
                 if address_exists:
                     address = output["address"]
+
+                    addressJson = json.loads(address)
+
+                    # Convert address string to json and get components
+                    country_exists =  "country" in addressJson
+                    state_exists =  "state" in addressJson
+                    city_exists =  "city" in addressJson
+                    
+                    if country_exists:
+                        userCountry = addressJson["country"]
+                    else:
+                        userCountry = ""
+                    
+                    if state_exists:
+                        userRegion = addressJson["state"]
+                    else:
+                        userRegion = ""
+                    
+                    if city_exists:
+                        userCity = addressJson["city"]
+                    else:
+                        userCity = ""
+
                 else:
                     address = ""
-
-                # Convert address string to json and get components
-                addressJson = json.loads(address)
-                userCountry = addressJson["country"]
-                userRegion = addressJson["state"]
-                userCity = addressJson["city"]
+                    userCountry = ""
+                    userRegion = ""
+                    userCity = ""
 
                 # Loop through websites and grab the ones we want
                 facebookURL = ""
