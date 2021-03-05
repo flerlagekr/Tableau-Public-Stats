@@ -18,11 +18,14 @@ from botocore.exceptions import ClientError
 # Max runtime, in seconds, before exiting the program to avoid exceeding lambda max runtimes (900 seconds)
 maxRuntime = 780 
 
+senderAddress = "Ken Flerlage <ken@flerlagetwins.com>"
+ownerAddress = "flerlagekr@gmail.com"
+
 #------------------------------------------------------------------------------------------------------------------------------
 # Email new user
 #------------------------------------------------------------------------------------------------------------------------------
 def send_new_user_email (email, firstName, url):
-    sender = "Ken Flerlage <flerlagekr@gmail.com>"
+    sender = senderAddress
     recipient = email
 
     region = "us-east-2"
@@ -97,8 +100,8 @@ def send_new_user_email (email, firstName, url):
 # Send message to Ken
 #------------------------------------------------------------------------------------------------------------------------------
 def phone_home (subject, msg):
-    sender = "Ken Flerlage <flerlagekr@gmail.com>"
-    recipient = "flerlagekr@gmail.com"
+    sender = senderAddress
+    recipient = ownerAddress
 
     region = "us-east-2"
 
@@ -279,7 +282,7 @@ def lambda_handler(event, context):
             if processed == False:
                 # Create a new spreadsheet, and assign permissions.
                 docStats = gc.create('Stats: ' + lastnameList[i] + ', ' + firstnameList[i])
-                docStats.share('flerlagekr@gmail.com', perm_type='user', role='writer')
+                docStats.share(ownerAddress, perm_type='user', role='writer')
                 docStats.share(emailList[i], perm_type='user', role='reader')
                 urlStats = 'https://docs.google.com/spreadsheets/d/' + docStats.id
                 log ("Created new sheet: " + urlStats)
@@ -320,8 +323,13 @@ def lambda_handler(event, context):
                 totalNumberOfFollowing = output["totalNumberOfFollowing"]
                 lastUserPublishDate = output["lastPublishDate"]
                 profileName = output["profileName"]
-                featuredVizRepoUrl = output["featuredVizRepoUrl"]
                 searchable = output["searchable"]
+
+                featured_exists =  "featuredVizRepoUrl" in output
+                if featured_exists:
+                    featuredVizRepoUrl = output["featuredVizRepoUrl"]
+                else:
+                    featuredVizRepoUrl = ""
 
                 avatar_exists =  "avatarUrl" in output
                 if avatar_exists:
@@ -386,9 +394,9 @@ def lambda_handler(event, context):
                     else:
                         websiteURL = wURL
 
-            except:
-                # Unable to serialize the response to json. Report error and exit loop.
-                msg = "Unable to process the profile, " + urlProfile + " via API. Error: " + str(sys.exc_info()[0])
+            except Exception as e:
+                # Some error occured. Report error and exit loop.
+                msg = "Unable to process the profile, " + urlProfile + " via API. Error: " + str(sys.exc_info()[0]) + " - " + str(e) 
                 log (msg)
 
                 subject = "Tableau Public Stats Service - Error Processing Profile"
@@ -477,9 +485,9 @@ def lambda_handler(event, context):
                         # Keep going.
                         foundValid = 1
                         
-                except:
-                    # Unable to serialize the response to json. Report error and exit loop.
-                    msg = "Unable to process the profile, " + urlProfile + " via API. Error: " + str(sys.exc_info()[0])
+                except Exception as e:
+                    # Some error occured. Report error and exit loop.
+                    msg = "Unable to process the profile, " + urlProfile + " via API. Error: " + str(sys.exc_info()[0]) + " - " + str(e) 
                     log (msg)
 
                     subject = "Tableau Public Stats Service - Error Processing Profile"
