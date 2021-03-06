@@ -280,6 +280,7 @@ def lambda_handler(event, context):
                     subject = "Tableau Public Stats Service - Error Opening Spreadsheet"
                     phone_home (subject, msg)
 
+                    # Report the error and let Ken look into the problem.
                     continueLoop = False
             
             if continueLoop == True:
