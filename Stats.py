@@ -242,9 +242,9 @@ def lambda_handler(event, context):
 
         refreshDate = datetime.datetime.strptime(refreshDateStr, "%Y-%m-%d %H:%M:%S")
         dateDiff = datetime.datetime.now() - refreshDate
-        daysSinceRefresh = dateDiff.days
+        hoursSinceRefresh = dateDiff.total_seconds()/3600
 
-        if daysSinceRefresh > 0:
+        if hoursSinceRefresh >= 23:
             # Get profile URL and and change it to use the API url.
             urlProfile = profileList[i]
             urlProfileOriginal = urlProfile
