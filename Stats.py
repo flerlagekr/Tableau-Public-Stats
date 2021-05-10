@@ -18,8 +18,8 @@ from botocore.exceptions import ClientError
 # Max runtime, in seconds, before exiting the program to avoid exceeding lambda max runtimes (900 seconds)
 maxRuntime = 780 
 
-senderAddress = "Ken Flerlage <ken@flerlagetwins.com>"
-ownerAddress = "flerlagekr@gmail.com"
+senderAddress = "Ken Flerlage <email address>"
+ownerAddress = "<email address>"
 
 #------------------------------------------------------------------------------------------------------------------------------
 # Email new user
@@ -180,8 +180,8 @@ def lambda_handler(event, context):
 
     # Get the Google Sheets credentials from S3
     s3 = boto3.client('s3')
-    bucket = "flerlage-lambda"
-    key = "creds.json"
+    bucket = "<bucket>"
+    key = "<creds object>"
     object = s3.get_object(Bucket=bucket, Key=key)
     content = object['Body']
     creds = json.loads(content.read())
@@ -194,7 +194,7 @@ def lambda_handler(event, context):
     gc = gspread.authorize(credentials) 
 
     # Read the sign-up sheet
-    docProfiles = gc.open_by_url('https://docs.google.com/spreadsheets/d/1WFTT7ZSXNacCMEcPzOTdf659KGFnXOVe6Y9Frc48vQs')
+    docProfiles = gc.open_by_url('https://docs.google.com/spreadsheets/d/<gsheet ID>')
     sheetProfiles = docProfiles.get_worksheet(0)
 
     emailList = sheetProfiles.col_values(2)
