@@ -2,8 +2,6 @@
 #  Written by Ken Flerlage, February, 2021.
 
 # Add fields for viz thumbnail and featured viz thumbnail.
-# https://public.tableau.com/views/NightLightsWorld/NightLights?:embed=y&:display_count=yes&:showVizHome=no
-# https://public.tableau.com/static/images/Ni/NightLightsWorld/NightLights/4_3.png
 
 import sys
 import json
