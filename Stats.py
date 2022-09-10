@@ -16,8 +16,11 @@ from botocore.exceptions import ClientError
 # Max runtime, in seconds, before exiting the program to avoid exceeding lambda max runtimes (900 seconds)
 maxRuntime = 780 
 
-senderAddress = "Ken Flerlage <email address>"
-ownerAddress = "<email address>"
+senderAddress = "Sender Name <email address>"                           # From name/email address for emails.
+ownerAddress = "email address"                                          # From email address for emails.
+s3Bucket = "bucket name"                                                # Name of the S3 bucket containing the credentials file.
+credsFile = "creds file name"                                           # Name of the credentials file in the S3 bucket.
+worksheetID = "Worksheet ID"                                            # ID of the Sign-Up Google Sheet.
 
 #------------------------------------------------------------------------------------------------------------------------------
 # Email new user
@@ -178,9 +181,8 @@ def lambda_handler(event, context):
 
     # Get the Google Sheets credentials from S3
     s3 = boto3.client('s3')
-    bucket = "<bucket>"
-    key = "<creds object>"
-    object = s3.get_object(Bucket=bucket, Key=key)
+    key = credsFile
+    object = s3.get_object(Bucket=s3Bucket, Key=key)
     content = object['Body']
     creds = json.loads(content.read())
 
@@ -192,7 +194,7 @@ def lambda_handler(event, context):
     gc = gspread.authorize(credentials) 
 
     # Read the sign-up sheet
-    docProfiles = gc.open_by_url('https://docs.google.com/spreadsheets/d/<gsheet ID>')
+    docProfiles = gc.open_by_url('https://docs.google.com/spreadsheets/d/' + worksheetID)
     sheetProfiles = docProfiles.get_worksheet(0)
 
     emailList = sheetProfiles.col_values(2)
@@ -271,6 +273,8 @@ def lambda_handler(event, context):
                 try:
                     docStats = gc.open_by_url(urlStats)
                     sheetStats = docStats.get_worksheet(0)
+                    sheetStats.clear()
+
                 except:
                     msg = "Could not open the spreadsheet: " + urlStats + "."
                     log (msg)
@@ -415,7 +419,7 @@ def lambda_handler(event, context):
                     try:
                         output = response.json()
 
-                        for o in output:
+                        for o in output:    
                             # Collect viz information.
                             title = o['title']
                             desc = o['description']
@@ -441,45 +445,55 @@ def lambda_handler(event, context):
                             urlVizNoVizHome = urlViz + "?:embed=y&:display_count=yes&:showVizHome=no" 
                             urlThumbnail = urlViz.replace("/views/", "/static/images/" + defaultViewRepoUrl[0:2] + "/") + "/4_3.png"
 
-                            urlViz = urlProfileOriginal + "vizhome/" + defaultViewRepoUrl.replace("/sheets","") 
+                            urlViz = urlProfileOriginal + "vizhome/" + defaultViewRepoUrl.replace("/sheets","")
 
-                            # Store all values in an array.
-                            matrix[vizCount, 0]  = workbookID
-                            matrix[vizCount, 1]  = title
-                            matrix[vizCount, 2]  = desc
-                            matrix[vizCount, 3]  = urlViz
-                            matrix[vizCount, 4]  = urlVizNoVizHome
-                            matrix[vizCount, 5]  = urlThumbnail
-                            matrix[vizCount, 6]  = defaultViewName
-                            matrix[vizCount, 7]  = showInProfile
-                            matrix[vizCount, 8]  = permalink
-                            matrix[vizCount, 9]  = viewCount
-                            matrix[vizCount, 10] = numberOfFavorites
-                            matrix[vizCount, 11] = str(firstPublishDateFormatted)
-                            matrix[vizCount, 12] = str(lastPublishDateFormatted)
-                            matrix[vizCount, 13] = revision
-                            matrix[vizCount, 14] = size
-                            matrix[vizCount, 15] = userName
-                            matrix[vizCount, 16] = profileName
-                            matrix[vizCount, 17] = userOrg
-                            matrix[vizCount, 18] = bio   
-                            matrix[vizCount, 19] = avatarUrl
-                            matrix[vizCount, 20] = searchable
-                            matrix[vizCount, 21] = featuredVizRepoUrl
-                            matrix[vizCount, 22] = str(lastUserPublishDateFormatted)
-                            matrix[vizCount, 23] = followerCount
-                            matrix[vizCount, 24] = totalNumberOfFollowing
-                            matrix[vizCount, 25] = userCountry
-                            matrix[vizCount, 26] = userRegion
-                            matrix[vizCount, 27] = userCity
-                            matrix[vizCount, 28] = websiteURL
-                            matrix[vizCount, 29] = linkedinURL
-                            matrix[vizCount, 30] = twitterURL
-                            matrix[vizCount, 31] = facebookURL
-                            matrix[vizCount, 32] = urlProfileOriginal
-                            matrix[vizCount, 33] = timestamp
+                            # Check to see if this workbook is already in the array (actually a dict).
+                            try:
+                                # If the following is successful then the workbook is already in the array. Skip it.
+                                foundIndex = list(matrix.keys())[list(matrix.values()).index(workbookID)]
+                                msg = "Workbook '" + workbookID + "' already processed. Skipping this workbook..."
+                                log (msg)
 
-                            vizCount += 1
+                            except:
+                                # Workbook not in the array yet so add it.
+
+                                # Store all values in an array.
+                                matrix[vizCount, 0]  = workbookID
+                                matrix[vizCount, 1]  = title
+                                matrix[vizCount, 2]  = desc
+                                matrix[vizCount, 3]  = urlViz
+                                matrix[vizCount, 4]  = urlVizNoVizHome
+                                matrix[vizCount, 5]  = urlThumbnail
+                                matrix[vizCount, 6]  = defaultViewName
+                                matrix[vizCount, 7]  = showInProfile
+                                matrix[vizCount, 8]  = permalink
+                                matrix[vizCount, 9]  = viewCount
+                                matrix[vizCount, 10] = numberOfFavorites
+                                matrix[vizCount, 11] = str(firstPublishDateFormatted)
+                                matrix[vizCount, 12] = str(lastPublishDateFormatted)
+                                matrix[vizCount, 13] = revision
+                                matrix[vizCount, 14] = size
+                                matrix[vizCount, 15] = userName
+                                matrix[vizCount, 16] = profileName
+                                matrix[vizCount, 17] = userOrg
+                                matrix[vizCount, 18] = bio   
+                                matrix[vizCount, 19] = avatarUrl
+                                matrix[vizCount, 20] = searchable
+                                matrix[vizCount, 21] = featuredVizRepoUrl
+                                matrix[vizCount, 22] = str(lastUserPublishDateFormatted)
+                                matrix[vizCount, 23] = followerCount
+                                matrix[vizCount, 24] = totalNumberOfFollowing
+                                matrix[vizCount, 25] = userCountry
+                                matrix[vizCount, 26] = userRegion
+                                matrix[vizCount, 27] = userCity
+                                matrix[vizCount, 28] = websiteURL
+                                matrix[vizCount, 29] = linkedinURL
+                                matrix[vizCount, 30] = twitterURL
+                                matrix[vizCount, 31] = facebookURL
+                                matrix[vizCount, 32] = urlProfileOriginal
+                                matrix[vizCount, 33] = timestamp
+
+                                vizCount += 1
                     
                         if not output:
                             # We're out of valid vizzes, so quit.
