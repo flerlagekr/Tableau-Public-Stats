@@ -328,7 +328,7 @@ def lambda_handler(event, context):
                     
                     followerCount = output["totalNumberOfFollowers"]
                     totalNumberOfFollowing = output["totalNumberOfFollowing"]
-                    lastUserPublishDate = output["lastPublishDate"]
+                    #lastUserPublishDate = output["lastPublishDate"]
                     profileName = output["profileName"]
                     searchable = output["searchable"]
 
@@ -419,7 +419,7 @@ def lambda_handler(event, context):
                     try:
                         output = response.json()
 
-                        for o in output:    
+                        for o in output['workbooks']:    
                             # Collect viz information.
                             title = o['title']
                             desc = o['description']
@@ -427,18 +427,30 @@ def lambda_handler(event, context):
                             defaultViewRepoUrl = o['defaultViewRepoUrl']
                             defaultViewName = o['defaultViewName']
                             showInProfile = o['showInProfile']
-                            permalink = o['permalink']
                             viewCount = o['viewCount']
                             numberOfFavorites = o['numberOfFavorites']
-                            firstPublishDate = o['firstPublishDate']
-                            lastPublishDate = o['lastPublishDate']
-                            revision = o['revision']
-                            size = o['size']
 
-                            # Calculations and cleanup of values.
-                            firstPublishDateFormatted = startDate + datetime.timedelta(milliseconds=firstPublishDate)
-                            lastPublishDateFormatted = startDate + datetime.timedelta(milliseconds=lastPublishDate)
-                            lastUserPublishDateFormatted = startDate + datetime.timedelta(milliseconds=lastUserPublishDate)
+                            # The following items have been removed from this API.
+                            #permalink = o['permalink']
+                            #firstPublishDate = o['firstPublishDate']
+                            #lastPublishDate = o['lastPublishDate']
+                            #revision = o['revision']
+                            #size = o['size']
+
+                            ## Calculations and cleanup of values.
+                            #firstPublishDateFormatted = startDate + datetime.timedelta(milliseconds=firstPublishDate)
+                            #lastPublishDateFormatted = startDate + datetime.timedelta(milliseconds=lastPublishDate)
+                            #lastUserPublishDateFormatted = startDate + datetime.timedelta(milliseconds=lastUserPublishDate)
+
+                            permalink = ""
+                            firstPublishDate = ""
+                            lastPublishDate = ""
+                            revision = ""
+                            size = ""
+
+                            firstPublishDateFormatted = ""
+                            lastPublishDateFormatted = ""
+                            lastUserPublishDateFormatted = ""
 
                             # Formulate the various URLs.
                             urlViz ="https://public.tableau.com/views/" + defaultViewRepoUrl.replace("/sheets","") 
@@ -447,61 +459,52 @@ def lambda_handler(event, context):
 
                             urlViz = urlProfileOriginal + "vizhome/" + defaultViewRepoUrl.replace("/sheets","")
 
-                            # Check to see if this workbook is already in the array (actually a dict).
-                            try:
-                                # If the following is successful then the workbook is already in the array. Skip it.
-                                foundIndex = list(matrix.keys())[list(matrix.values()).index(workbookID)]
-                                msg = "Workbook '" + workbookID + "' already processed. Skipping this workbook..."
-                                log (msg)
+                            # Store all values in an array.
+                            matrix[vizCount, 0]  = workbookID
+                            matrix[vizCount, 1]  = title
+                            matrix[vizCount, 2]  = desc
+                            matrix[vizCount, 3]  = urlViz
+                            matrix[vizCount, 4]  = urlVizNoVizHome
+                            matrix[vizCount, 5]  = urlThumbnail
+                            matrix[vizCount, 6]  = defaultViewName
+                            matrix[vizCount, 7]  = showInProfile
+                            matrix[vizCount, 8]  = permalink
+                            matrix[vizCount, 9]  = viewCount
+                            matrix[vizCount, 10] = numberOfFavorites
+                            matrix[vizCount, 11] = str(firstPublishDateFormatted)
+                            matrix[vizCount, 12] = str(lastPublishDateFormatted)
+                            matrix[vizCount, 13] = revision
+                            matrix[vizCount, 14] = size
+                            matrix[vizCount, 15] = userName
+                            matrix[vizCount, 16] = profileName
+                            matrix[vizCount, 17] = userOrg
+                            matrix[vizCount, 18] = bio   
+                            matrix[vizCount, 19] = avatarUrl
+                            matrix[vizCount, 20] = searchable
+                            matrix[vizCount, 21] = featuredVizRepoUrl
+                            matrix[vizCount, 22] = str(lastUserPublishDateFormatted)
+                            matrix[vizCount, 23] = followerCount
+                            matrix[vizCount, 24] = totalNumberOfFollowing
+                            matrix[vizCount, 25] = userCountry
+                            matrix[vizCount, 26] = userRegion
+                            matrix[vizCount, 27] = userCity
+                            matrix[vizCount, 28] = websiteURL
+                            matrix[vizCount, 29] = linkedinURL
+                            matrix[vizCount, 30] = twitterURL
+                            matrix[vizCount, 31] = facebookURL
+                            matrix[vizCount, 32] = urlProfileOriginal
+                            matrix[vizCount, 33] = timestamp
 
-                            except:
-                                # Workbook not in the array yet so add it.
-
-                                # Store all values in an array.
-                                matrix[vizCount, 0]  = workbookID
-                                matrix[vizCount, 1]  = title
-                                matrix[vizCount, 2]  = desc
-                                matrix[vizCount, 3]  = urlViz
-                                matrix[vizCount, 4]  = urlVizNoVizHome
-                                matrix[vizCount, 5]  = urlThumbnail
-                                matrix[vizCount, 6]  = defaultViewName
-                                matrix[vizCount, 7]  = showInProfile
-                                matrix[vizCount, 8]  = permalink
-                                matrix[vizCount, 9]  = viewCount
-                                matrix[vizCount, 10] = numberOfFavorites
-                                matrix[vizCount, 11] = str(firstPublishDateFormatted)
-                                matrix[vizCount, 12] = str(lastPublishDateFormatted)
-                                matrix[vizCount, 13] = revision
-                                matrix[vizCount, 14] = size
-                                matrix[vizCount, 15] = userName
-                                matrix[vizCount, 16] = profileName
-                                matrix[vizCount, 17] = userOrg
-                                matrix[vizCount, 18] = bio   
-                                matrix[vizCount, 19] = avatarUrl
-                                matrix[vizCount, 20] = searchable
-                                matrix[vizCount, 21] = featuredVizRepoUrl
-                                matrix[vizCount, 22] = str(lastUserPublishDateFormatted)
-                                matrix[vizCount, 23] = followerCount
-                                matrix[vizCount, 24] = totalNumberOfFollowing
-                                matrix[vizCount, 25] = userCountry
-                                matrix[vizCount, 26] = userRegion
-                                matrix[vizCount, 27] = userCity
-                                matrix[vizCount, 28] = websiteURL
-                                matrix[vizCount, 29] = linkedinURL
-                                matrix[vizCount, 30] = twitterURL
-                                matrix[vizCount, 31] = facebookURL
-                                matrix[vizCount, 32] = urlProfileOriginal
-                                matrix[vizCount, 33] = timestamp
-
-                                vizCount += 1
+                            vizCount += 1
                     
-                        if not output:
+                        if output['hasMore'] == False:
                             # We're out of valid vizzes, so quit.
                             foundValid = 0
                         else:
                             # Keep going.
                             foundValid = 1
-                            
+
+
                     except Exception as e:
                         # Some error occured. Report error and exit loop.
                         msg = "Unable to process the profile, " + urlProfile + " via API. Error: " + str(sys.exc_info()[0]) + " - " + str(e) 
