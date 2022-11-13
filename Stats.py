@@ -5,6 +5,7 @@
 
 import sys
 import json
+from weakref import ref
 import requests
 import datetime
 import gspread
@@ -328,7 +329,6 @@ def lambda_handler(event, context):
                     
                     followerCount = output["totalNumberOfFollowers"]
                     totalNumberOfFollowing = output["totalNumberOfFollowing"]
-                    #lastUserPublishDate = output["lastPublishDate"]
                     profileName = output["profileName"]
                     searchable = output["searchable"]
 
@@ -421,36 +421,38 @@ def lambda_handler(event, context):
 
                         for o in output['workbooks']:    
                             # Collect viz information.
-                            title = o['title']
-                            desc = o['description']
                             workbookID = o['workbookRepoUrl']
-                            defaultViewRepoUrl = o['defaultViewRepoUrl']
-                            defaultViewName = o['defaultViewName']
-                            showInProfile = o['showInProfile']
-                            viewCount = o['viewCount']
-                            numberOfFavorites = o['numberOfFavorites']
+
+                            # Now call the Workbook Detail API.
+                            urlWorkbook = "https://public.tableau.com/profile/api/single_workbook/" + workbookID + "?"
+                            response = requests.get(urlWorkbook)
+                            wbStats = response.json()
+
+                            title = wbStats['title']
+                            desc = wbStats['description']
+                            defaultViewRepoUrl = wbStats['defaultViewRepoUrl']
+                            defaultViewName = wbStats['defaultViewName']
+                            showInProfile = wbStats['showInProfile']
+                            viewCount = wbStats['viewCount']
+                            numberOfFavorites = wbStats['numberOfFavorites']
 
                             # The following items have been removed from this API.
-                            #permalink = o['permalink']
-                            #firstPublishDate = o['firstPublishDate']
-                            #lastPublishDate = o['lastPublishDate']
-                            #revision = o['revision']
-                            #size = o['size']
+                            permalink = wbStats['permalink']
+                            firstPublishDate = wbStats['firstPublishDate']
+                            lastPublishDate = wbStats['lastPublishDate']
+                            revision = wbStats['revision']
+                            size = wbStats['size']
 
-                            ## Calculations and cleanup of values.
-                            #firstPublishDateFormatted = startDate + datetime.timedelta(milliseconds=firstPublishDate)
-                            #lastPublishDateFormatted = startDate + datetime.timedelta(milliseconds=lastPublishDate)
-                            #lastUserPublishDateFormatted = startDate + datetime.timedelta(milliseconds=lastUserPublishDate)
-
-                            permalink = ""
-                            firstPublishDate = ""
-                            lastPublishDate = ""
-                            revision = ""
-                            size = ""
-
-                            firstPublishDateFormatted = ""
-                            lastPublishDateFormatted = ""
-                            lastUserPublishDateFormatted = ""
+                            # Calculations and cleanup of values.
+                            firstPublishDateFormatted = startDate + datetime.timedelta(milliseconds=firstPublishDate)
+                            lastPublishDateFormatted = startDate + datetime.timedelta(milliseconds=lastPublishDate)
+                            
+                            if vizCount == 0:
+                                # This is the first one.
+                                lastUserPublishDateFormatted = lastPublishDateFormatted
+                            else:
+                                if lastPublishDateFormatted > lastUserPublishDateFormatted:
+                                    lastUserPublishDateFormatted = lastPublishDateFormatted
 
                             # Formulate the various URLs.
                             urlViz ="https://public.tableau.com/views/" + defaultViewRepoUrl.replace("/sheets","") 
@@ -519,6 +521,10 @@ def lambda_handler(event, context):
 
                 # Loop through the matrix and write values for a batch update to Google Sheets.
                 if vizCount > 0:
+                    # Update user last published date
+                    for vizIndex in range(0, vizCount):
+                        matrix[vizIndex, 22] = str(lastUserPublishDateFormatted)
+
                     rangeString = "A2:AH" + str(vizCount+1)
 
                     cell_list = sheetStats.range(rangeString)
@@ -573,8 +579,6 @@ def lambda_handler(event, context):
                     matrix[0, 32] = "User - Tableau Public"
                     matrix[0, 33] = "Stats - Stats Last Refreshed"
 
-                    #workbookID, urlVizNoVizHome, urlThumbnail
-
                     rangeString = "A1:AH1"
 
                     cell_list = sheetStats.range(rangeString)
@@ -584,6 +588,7 @@ def lambda_handler(event, context):
 
                     for cell in cell_list: 
                         cell.value = matrix[row,column]
+
                         column += 1
 
                     # Update in batch   
@@ -615,10 +620,13 @@ def lambda_handler(event, context):
             refreshDate = datetime.datetime.today().strftime("%Y-%m-%d %H:%M:%S")
             sheetProfiles.update_cell(i+1, 7, refreshDate)
 
+            refreshDate=refreshDate
+
     # Send email to Ken, indicating the number of new subscribers.
-    msg = str(newCount) + " new subscribers have been added."
-    subject = "Tableau Public Stats Service - " + str(newCount) + " New Subscribers"
-    phone_home (subject, msg)
+    if newCount > 0:
+        msg = str(newCount) + " new subscribers have been added."
+        subject = "Tableau Public Stats Service - " + str(newCount) + " New Subscribers"
+        phone_home (subject, msg)
 
 
 #------------------------------------------------------------------------------------------------------------------------------
