@@ -183,20 +183,17 @@ def lambda_handler(event, context):
     content = object['Body']
     creds = json.loads(content.read())
 
-    # Open Google Sheet
-    scope =['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
-    
     # Read your Google API key from a local json file.
+    scope =['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
     credentials = ServiceAccountCredentials.from_json_keyfile_dict(creds, scope)
     gc = gspread.authorize(credentials) 
 
-    # Read the sign-up sheet
+    # Read the sign-up and summary sheets.
     docProfiles = gc.open_by_url('https://docs.google.com/spreadsheets/d/' + worksheetID)
     sheetProfiles = docProfiles.worksheet("Form Responses 1")
-
-    # Read the summary sheet
     sheetSummary = docProfiles.worksheet("Summary")
 
+    # Get columns from the profiles sheet.
     emailList = sheetProfiles.col_values(2)
     firstnameList = sheetProfiles.col_values(3)
     lastnameList = sheetProfiles.col_values(4)
@@ -253,24 +250,30 @@ def lambda_handler(event, context):
             matrix[i, 9]  = dateList[i]
 
         except Exception as e:
-            # Google API can be finicky, so pause if there is an error then continue.
-            matrix[i, 0]  = ''
-            matrix[i, 1]  = ''
-            matrix[i, 2]  = ''
-            matrix[i, 3]  = ''
-            matrix[i, 4]  = ''
-            matrix[i, 5]  = ''
-            matrix[i, 6]  = ''
-            matrix[i, 7]  = ''
-            matrix[i, 8]  = ''
-            matrix[i, 9]  = ''
+            # Google API can be finicky. 
+            # Use the existing values, log the error, pause before continuing.
+            matrix[i, 0]  = sheetSummary.col_values(1)[i]
+            matrix[i, 1]  = sheetSummary.col_values(2)[i]
+            matrix[i, 2]  = sheetSummary.col_values(3)[i]
+            matrix[i, 3]  = sheetSummary.col_values(4)[i]
+            matrix[i, 4]  = sheetSummary.col_values(5)[i]
+            matrix[i, 5]  = sheetSummary.col_values(6)[i]
+            matrix[i, 6]  = sheetSummary.col_values(7)[i]
+            matrix[i, 7]  = sheetSummary.col_values(8)[i]
+            matrix[i, 8]  = sheetSummary.col_values(9)[i]
+            matrix[i, 9]  = sheetSummary.col_values(10)[i]
 
+            # Log the error.
             msg = "Error: " + str(sys.exc_info()[0]) + " - " + str(e) 
             log (msg)
 
             subject = "Tableau Public Stats Sumarization Error"
             phone_home (subject, msg)
-            time.sleep(5)
+
+            msg = "Pausing for 10 seconds..."
+            log (msg)
+
+            time.sleep(10)
             continue
 
     # Write the matrix array to the Summary Sheet.
