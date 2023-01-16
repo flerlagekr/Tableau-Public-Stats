@@ -187,10 +187,8 @@ def lambda_handler(event, context):
     content = object['Body']
     creds = json.loads(content.read())
 
-    # Open Google Sheet
+    # Read the Google API key from the creds file.
     scope =['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
-    
-    # Read your Google API key from a local json file.
     credentials = ServiceAccountCredentials.from_json_keyfile_dict(creds, scope)
     gc = gspread.authorize(credentials) 
 
@@ -204,12 +202,10 @@ def lambda_handler(event, context):
     profileList = sheetProfiles.col_values(5)
     urlList = sheetProfiles.col_values(6)
     dateList = sheetProfiles.col_values(7)
-
     profileCount = len(emailList)
 
+    # Initialize some variables.
     processed = False
-
-
     newCount = 0
 
     # Loop through all the profiles.
@@ -274,16 +270,15 @@ def lambda_handler(event, context):
                 try:
                     docStats = gc.open_by_url(urlStats)
                     sheetStats = docStats.get_worksheet(0)
-                    sheetStats.clear()
 
                 except:
                     msg = "Could not open the spreadsheet: " + urlStats + "."
-                    log (msg)
+                    log(msg)
 
                     subject = "Tableau Public Stats Service - Error Opening Spreadsheet"
-                    phone_home (subject, msg)
+                    phone_home(subject, msg)
 
-                    # Report the error and let Ken look into the problem.
+                    # Report the error and let the admin look into the problem.
                     continueLoop = False
             
             if continueLoop == True:
@@ -293,10 +288,9 @@ def lambda_handler(event, context):
                     docStats.share(ownerAddress, perm_type='user', role='writer')
                     docStats.share(emailList[i], perm_type='user', role='reader')
                     urlStats = 'https://docs.google.com/spreadsheets/d/' + docStats.id
-                    log ("Created new sheet: " + urlStats)
+                    log("Created new sheet: " + urlStats)
 
                     sheetProfiles.update_cell(i+1, 6, urlStats)
-
                     sheetStats = docStats.get_worksheet(0)
 
                 # Initialize Variables
@@ -315,45 +309,51 @@ def lambda_handler(event, context):
                     output = response.json()
                     userName = output["name"]
 
+                    # Check for organization.
                     org_exists =  "organization" in output
                     if org_exists:
                         userOrg = output["organization"]
                     else:
                         userOrg = ""
 
+                    # Check for bio.
                     bio_exists =  "bio" in output
                     if bio_exists:
                         bio = output["bio"]
                     else:
                         bio = ""
                     
+                    # Get general information.
                     followerCount = output["totalNumberOfFollowers"]
                     totalNumberOfFollowing = output["totalNumberOfFollowing"]
                     profileName = output["profileName"]
                     searchable = output["searchable"]
 
+                    # Check for featured viz.
                     featured_exists =  "featuredVizRepoUrl" in output
                     if featured_exists:
                         featuredVizRepoUrl = output["featuredVizRepoUrl"]
                     else:
                         featuredVizRepoUrl = ""
 
+                    # Check for avatar URL.
                     avatar_exists =  "avatarUrl" in output
                     if avatar_exists:
                         avatarUrl = output["avatarUrl"]
                     else:
                         avatarUrl = ""
 
+                    # Check for websites.
                     websites_exists =  "websites" in output
                     if websites_exists:
                         websites = output["websites"]
                     else:
                         websites = ""
 
+                    # Check for address.
                     address_exists =  "address" in output
                     if address_exists:
                         address = output["address"]
-
                         addressJson = json.loads(address)
 
                         # Convert address string to json and get components
@@ -420,14 +420,13 @@ def lambda_handler(event, context):
                         output = response.json()
 
                         for o in output['workbooks']:    
-                            # Collect viz information.
+                            # Now call the Workbook Detail API for each workbook.
                             workbookID = o['workbookRepoUrl']
-
-                            # Now call the Workbook Detail API.
                             urlWorkbook = "https://public.tableau.com/profile/api/single_workbook/" + workbookID + "?"
                             response = requests.get(urlWorkbook)
                             wbStats = response.json()
 
+                            # Get all the information about the workbook.
                             title = wbStats['title']
                             desc = wbStats['description']
                             defaultViewRepoUrl = wbStats['defaultViewRepoUrl']
@@ -435,8 +434,6 @@ def lambda_handler(event, context):
                             showInProfile = wbStats['showInProfile']
                             viewCount = wbStats['viewCount']
                             numberOfFavorites = wbStats['numberOfFavorites']
-
-                            # The following items have been removed from this API.
                             permalink = wbStats['permalink']
                             firstPublishDate = wbStats['firstPublishDate']
                             lastPublishDate = wbStats['lastPublishDate']
@@ -448,17 +445,17 @@ def lambda_handler(event, context):
                             lastPublishDateFormatted = startDate + datetime.timedelta(milliseconds=lastPublishDate)
                             
                             if vizCount == 0:
-                                # This is the first one.
+                                # This is the first workbook so use initialize the date with this workbooks' date.
                                 lastUserPublishDateFormatted = lastPublishDateFormatted
                             else:
                                 if lastPublishDateFormatted > lastUserPublishDateFormatted:
+                                    # Update the date to this more recent date.
                                     lastUserPublishDateFormatted = lastPublishDateFormatted
 
-                            # Formulate the various URLs.
+                            # Create the various URLs.
                             urlViz ="https://public.tableau.com/views/" + defaultViewRepoUrl.replace("/sheets","") 
                             urlVizNoVizHome = urlViz + "?:embed=y&:display_count=yes&:showVizHome=no" 
                             urlThumbnail = urlViz.replace("/views/", "/static/images/" + defaultViewRepoUrl[0:2] + "/") + "/4_3.png"
-
                             urlViz = urlProfileOriginal + "vizhome/" + defaultViewRepoUrl.replace("/sheets","")
 
                             # Store all values in an array.
@@ -506,7 +503,6 @@ def lambda_handler(event, context):
                             # Keep going.
                             foundValid = 1
 
-
                     except Exception as e:
                         # Some error occured. Report error and exit loop.
                         msg = "Unable to process the profile, " + urlProfile + " via API. Error: " + str(sys.exc_info()[0]) + " - " + str(e) 
@@ -525,10 +521,11 @@ def lambda_handler(event, context):
                     for vizIndex in range(0, vizCount):
                         matrix[vizIndex, 22] = str(lastUserPublishDateFormatted)
 
+                    # Set the cell range.
                     rangeString = "A2:AH" + str(vizCount+1)
-
                     cell_list = sheetStats.range(rangeString)
 
+                    # Loop through all the cells in the range, populating from the matrix.
                     row = 0
                     column = 0
 
@@ -539,7 +536,8 @@ def lambda_handler(event, context):
                             column=0
                             row += 1
 
-                    # Update in batch   
+                    # Clear the sheet then update in batch
+                    sheetStats.clear()
                     sheetStats.update_cells(cell_list)
 
                     # Write the header
@@ -579,10 +577,11 @@ def lambda_handler(event, context):
                     matrix[0, 32] = "User - Tableau Public"
                     matrix[0, 33] = "Stats - Stats Last Refreshed"
 
+                    # Set the range for the header.
                     rangeString = "A1:AH1"
-
                     cell_list = sheetStats.range(rangeString)
 
+                    # Loop through all the cells in the range, populating from the matrix.
                     row = 0
                     column = 0
 
@@ -591,7 +590,7 @@ def lambda_handler(event, context):
 
                         column += 1
 
-                    # Update in batch   
+                    # Update in batch.
                     sheetStats.update_cells(cell_list)
 
                     # Finishing touches
@@ -602,7 +601,6 @@ def lambda_handler(event, context):
                     sheetStats.format(rangeString, {'textFormat': {'bold': True}})
 
                     sheetStats.freeze(rows=1)
-
                     sheetStats.update_title ("Stats")
 
                     log ("Wrote " + str(vizCount) + " records.")
@@ -612,15 +610,13 @@ def lambda_handler(event, context):
                         send_new_user_email(emailList[i], firstnameList[i], urlStats)
                         newCount += 1
 
+                    # Populate the last refreshed date.
+                    refreshDate = datetime.datetime.today().strftime("%Y-%m-%d %H:%M:%S")
+                    sheetProfiles.update_cell(i+1, 7, refreshDate)
+
                 else:
                     log ("No records written.")
 
-
-            # Populate the last refreshed date.
-            refreshDate = datetime.datetime.today().strftime("%Y-%m-%d %H:%M:%S")
-            sheetProfiles.update_cell(i+1, 7, refreshDate)
-
-            refreshDate=refreshDate
 
     # Send email to Ken, indicating the number of new subscribers.
     if newCount > 0:
