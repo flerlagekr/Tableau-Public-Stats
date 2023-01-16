@@ -203,6 +203,7 @@ def lambda_handler(event, context):
     profileCount = len(emailList)-1
 
     matrix = {}
+    refreshDate = datetime.datetime.today().strftime("%Y-%m-%d %H:%M:%S")
 
     for i in range(1, profileCount+1):
         log("Proessing profile " + str(i) + " of " + str(profileCount))
@@ -238,16 +239,17 @@ def lambda_handler(event, context):
                     vizCount+=1
 
             # Write to the matrix
-            matrix[i, 0]  = firstnameList[i]
-            matrix[i, 1]  = lastnameList[i]
-            matrix[i, 2]  = profileList[i]
-            matrix[i, 3]  = urlList[i]
-            matrix[i, 4]  = str(favoritesCount)
-            matrix[i, 5]  = str(viewsCount)
-            matrix[i, 6]  = str(followersCount)
-            matrix[i, 7]  = str(followingCount)
-            matrix[i, 8]  = str(vizCount)
-            matrix[i, 9]  = dateList[i]
+            matrix[i, 0] = firstnameList[i]
+            matrix[i, 1] = lastnameList[i]
+            matrix[i, 2] = profileList[i]
+            matrix[i, 3] = urlList[i]
+            matrix[i, 4] = str(favoritesCount)
+            matrix[i, 5] = str(viewsCount)
+            matrix[i, 6] = str(followersCount)
+            matrix[i, 7] = str(followingCount)
+            matrix[i, 8] = str(vizCount)
+            matrix[i, 9] = dateList[i]
+            matrix[i,10] = refreshDate 
 
         except Exception as e:
             # Google API can be finicky. 
@@ -262,9 +264,10 @@ def lambda_handler(event, context):
             matrix[i, 7]  = sheetSummary.col_values(8)[i]
             matrix[i, 8]  = sheetSummary.col_values(9)[i]
             matrix[i, 9]  = sheetSummary.col_values(10)[i]
+            matrix[i,10]  = sheetSummary.col_values(11)[i]
 
             # Log the error.
-            msg = "Error: " + str(sys.exc_info()[0]) + " - " + str(e) 
+            msg = "Error processing profile # " + str(i) + " (" + sheetSummary.col_values(1)[i] + " " + sheetSummary.col_values(2)[i] + "): " + str(sys.exc_info()[0]) + " - " + str(e) 
             log (msg)
 
             subject = "Tableau Public Stats Sumarization Error"
@@ -278,8 +281,7 @@ def lambda_handler(event, context):
 
     # Write the matrix array to the Summary Sheet.
     log("Writing summary stats to sheet.")
-    rangeString = "A2:J" + str(profileCount+1)
-
+    rangeString = "A2:K" + str(profileCount+1)
     cell_list = sheetSummary.range(rangeString)
 
     row = 1
@@ -288,7 +290,7 @@ def lambda_handler(event, context):
     for cell in cell_list: 
         cell.value = matrix[row,column]
         column += 1
-        if (column > 9):
+        if (column > 10):
             column=0
             row += 1
 
