@@ -249,7 +249,9 @@ def lambda_handler(event, context):
             urlProfile = urlProfile[0:len(urlProfile)-3]
             urlProfile = urlProfile + "/"
             urlProfile = urlProfile.replace('https://public.tableau.com/profile', 'https://public.tableau.com/profile/api')
-            urlProfileWB = urlProfile + 'workbooks'
+            profileID = urlProfile.replace('https://public.tableau.com/profile/api/', '')
+            profileID = profileID[0:-1]
+            urlProfileWB = 'https://public.tableau.com/public/apis/workbooks'
 
             log ("Processing profile: " + lastnameList[i] + ", " + firstnameList[i])
 
@@ -294,7 +296,7 @@ def lambda_handler(event, context):
                     sheetStats = docStats.get_worksheet(0)
 
                 # Initialize Variables
-                pageCount = 250
+                pageCount = 50
                 index = 0
                 vizCount = 0
                 matrix = {}
@@ -412,14 +414,15 @@ def lambda_handler(event, context):
                     foundValid = 0
 
                 # Call the Tableau Public workbook API in chunks and write to the Google Sheet.
+                # Note: The API no longer allows public users to get a list of hidden workbooks.
                 while (foundValid == 1):
-                    parameters = {"count": pageCount, "index": index}
+                    parameters = {"count": pageCount, "start": index, "profileName": profileID, "visibility": "NON_HIDDEN"}
                     response = requests.get(urlProfileWB, params=parameters)
 
                     try:
                         output = response.json()
 
-                        for o in output['workbooks']:    
+                        for o in output['contents']:    
                             # Now call the Workbook Detail API for each workbook.
                             workbookID = o['workbookRepoUrl']
                             urlWorkbook = "https://public.tableau.com/profile/api/single_workbook/" + workbookID + "?"
@@ -496,9 +499,9 @@ def lambda_handler(event, context):
 
                             vizCount += 1
                     
-                        if output['hasMore'] == False:
-                            # We're out of valid vizzes, so quit.
-                            foundValid = 0
+                        if output['next'] == None:
+                            # We're out of valid vizzes, so move on.
+                                foundValid = 0
                         else:
                             # Keep going.
                             foundValid = 1
