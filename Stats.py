@@ -17,11 +17,16 @@ from botocore.exceptions import ClientError
 # Max runtime, in seconds, before exiting the program to avoid exceeding lambda max runtimes (900 seconds)
 maxRuntime = 780 
 
+# Other Variables
+urlProfileWB = 'https://public.tableau.com/public/apis/workbooks'
+
+# Fill in the following values with your own information.
 senderAddress = "Sender Name <email address>"                           # From name/email address for emails.
 ownerAddress = "email address"                                          # From email address for emails.
 s3Bucket = "bucket name"                                                # Name of the S3 bucket containing the credentials file.
 credsFile = "creds file name"                                           # Name of the credentials file in the S3 bucket.
 worksheetID = "Worksheet ID"                                            # ID of the Sign-Up Google Sheet.
+
 
 #------------------------------------------------------------------------------------------------------------------------------
 # Email new user
@@ -243,15 +248,13 @@ def lambda_handler(event, context):
 
         if hoursSinceRefresh >= 23:
             # Get profile URL and and change it to use the API url.
-            urlProfile = profileList[i]
+            profileID = profileList[i]
+            urlProfile = "https://public.tableau.com/profile/" + profileID + "#!/"
             urlProfileOriginal = urlProfile
             urlProfile = urlProfile.strip()
             urlProfile = urlProfile[0:len(urlProfile)-3]
             urlProfile = urlProfile + "/"
             urlProfile = urlProfile.replace('https://public.tableau.com/profile', 'https://public.tableau.com/profile/api')
-            profileID = urlProfile.replace('https://public.tableau.com/profile/api/', '')
-            profileID = profileID[0:-1]
-            urlProfileWB = 'https://public.tableau.com/public/apis/workbooks'
 
             log ("Processing profile: " + lastnameList[i] + ", " + firstnameList[i])
 
@@ -405,7 +408,7 @@ def lambda_handler(event, context):
 
                 except Exception as e:
                     # Some error occured. Report error and exit loop.
-                    msg = "Unable to process the profile, " + urlProfile + " via API. Error: " + str(sys.exc_info()[0]) + " - " + str(e) 
+                    msg = "Unable to process the profile, " + profileID + " via API. Error: " + str(sys.exc_info()[0]) + " - " + str(e) 
                     log (msg)
 
                     subject = "Tableau Public Stats Service - Error Processing Profile"
@@ -508,7 +511,7 @@ def lambda_handler(event, context):
 
                     except Exception as e:
                         # Some error occured. Report error and exit loop.
-                        msg = "Unable to process the profile, " + urlProfile + " via API. Error: " + str(sys.exc_info()[0]) + " - " + str(e) 
+                        msg = "Unable to process the profile, " + profileID + " via API. Error: " + str(sys.exc_info()[0]) + " - " + str(e) 
                         log (msg)
 
                         subject = "Tableau Public Stats Service - Error Processing Profile"
