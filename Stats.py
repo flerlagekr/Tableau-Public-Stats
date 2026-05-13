@@ -256,6 +256,10 @@ def lambda_handler(event, context):
             urlProfile = urlProfile + "/"
             urlProfile = urlProfile.replace('https://public.tableau.com/profile', 'https://public.tableau.com/profile/api')
 
+            # Remove trailing slash if present
+            if urlProfile.endswith("/"):
+                urlProfile = urlProfile[:-1]
+
             log ("Processing profile: " + lastnameList[i] + ", " + firstnameList[i])
 
             if len(urlList) <= i:
@@ -428,6 +432,8 @@ def lambda_handler(event, context):
                         for o in output['contents']:    
                             # Now call the Workbook Detail API for each workbook.
                             workbookID = o['workbookRepoUrl']
+                            log ("Processing profile: " + lastnameList[i] + ", " + firstnameList[i] + ", Workbook ID " + workbookID)
+
                             urlWorkbook = "https://public.tableau.com/profile/api/single_workbook/" + workbookID + "?"
                             response = requests.get(urlWorkbook)
                             wbStats = response.json()
@@ -502,9 +508,9 @@ def lambda_handler(event, context):
 
                             vizCount += 1
                     
-                        if output['next'] == None:
+                        if output['next'] == -1:
                             # We're out of valid vizzes, so move on.
-                                foundValid = 0
+                            foundValid = 0
                         else:
                             # Keep going.
                             foundValid = 1
@@ -640,5 +646,5 @@ if __name__ == "__main__":
     log("Code is running locally..............................................................")
     context = []
     event = {"state": "DISABLED"}
-    boto3.setup_default_session(region_name="us-east-2", profile_name="default")
+    boto3.setup_default_session(region_name="us-east-2", profile_name="personal")
     lambda_handler(event, context)
